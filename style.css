@@ -45,11 +45,25 @@ body {
     transform: translateY(-50%) scale(0.95);
 }
 
-.left-btn {
+.left-controls {
+    position: absolute;
     left: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    z-index: 20;
+}
+
+.left-controls .side-btn {
+    position: relative;
+    transform: none;
+    top: auto;
     background-color: rgba(149, 165, 166, 0.9);
 }
-.left-btn:active {
+.left-controls .side-btn:active {
+    transform: scale(0.95);
     background-color: rgba(127, 140, 141, 1);
 }
 
@@ -126,6 +140,15 @@ body {
 .cell.x { color: #e74c3c; }
 .cell.o { color: #2ecc71; }
 .cell.winning-cell { background-color: #f1c40f; color: white; }
+
+@keyframes hintBlink {
+    0% { background-color: #f1c40f; transform: scale(1.1); }
+    100% { background-color: #ecf0f1; transform: scale(1); }
+}
+.cell.hint-cell {
+    animation: hintBlink 0.4s ease-in-out 4 alternate;
+    z-index: 10;
+}
 
 /* Modal */
 .modal {

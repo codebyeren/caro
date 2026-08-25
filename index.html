@@ -12,12 +12,21 @@
 <body>
     <div class="app-container">
         <!-- Floating side buttons -->
-        <button id="btn-undo" class="side-btn left-btn" title="Thao tác lại">
-            <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 7v6h6"></path>
-                <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
-            </svg>
-        </button>
+        <div class="left-controls">
+            <button id="btn-hint" class="side-btn" title="Gợi ý">
+                <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 18h6"></path>
+                    <path d="M10 22h4"></path>
+                    <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A6 6 0 1 0 7.5 11.5c.76.76 1.23 1.52 1.41 2.5"></path>
+                </svg>
+            </button>
+            <button id="btn-undo" class="side-btn" title="Thao tác lại">
+                <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 7v6h6"></path>
+                    <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+                </svg>
+            </button>
+        </div>
         <div class="right-controls">
             <button id="btn-size" class="side-btn text-btn" title="Đổi kích thước">25x25</button>
             <button id="btn-restart" class="side-btn" title="Chơi Lại">

@@ -12,6 +12,7 @@ const winnerMessage = document.getElementById('winner-message');
 const btnRestart = document.getElementById('btn-restart');
 const btnUndo = document.getElementById('btn-undo');
 const btnSize = document.getElementById('btn-size');
+const btnHint = document.getElementById('btn-hint');
 const btnModalRestart = document.getElementById('btn-modal-restart');
 
 function initGame() {
@@ -138,8 +139,146 @@ function endGame(message) {
     winnerModal.classList.remove('hidden');
 }
 
+// ===== ADVANCED HINT AI ENGINE =====
+
+// Score table for patterns: key = "count_openEnds"
+// count = consecutive same-player pieces in a line
+// openEnds = how many ends of that line are open (0, 1, or 2)
+const SCORE_TABLE = {
+    '5_0': 1000000, '5_1': 1000000, '5_2': 1000000,
+    '4_2': 500000,   // Open 4: unstoppable, 2 ways to win
+    '4_1': 50000,    // Closed 4: 1 way to win
+    '4_0': 0,
+    '3_2': 10000,    // Open 3: will become open-4 next turn
+    '3_1': 1000,     // Closed 3
+    '3_0': 0,
+    '2_2': 500,      // Open 2
+    '2_1': 100,
+    '2_0': 0,
+    '1_2': 50,       // Open 1
+    '1_1': 10,
+    '1_0': 0,
+};
+
+function getPatternScore(count, openEnds) {
+    if (count >= 5) return SCORE_TABLE['5_2'];
+    const key = `${count}_${openEnds}`;
+    return SCORE_TABLE[key] || 0;
+}
+
+// Analyze a line in one direction from (row, col) for a given player
+function analyzeLine(row, col, dr, dc, player) {
+    let count = 1;
+    let openEnds = 0;
+
+    // Scan positive direction
+    let r = row + dr, c = col + dc;
+    while (r >= 0 && r < SIZE && c >= 0 && c < SIZE && boardState[r][c] === player) {
+        count++;
+        r += dr;
+        c += dc;
+    }
+    if (r >= 0 && r < SIZE && c >= 0 && c < SIZE && boardState[r][c] === null) openEnds++;
+
+    // Scan negative direction
+    r = row - dr;
+    c = col - dc;
+    while (r >= 0 && r < SIZE && c >= 0 && c < SIZE && boardState[r][c] === player) {
+        count++;
+        r -= dr;
+        c -= dc;
+    }
+    if (r >= 0 && r < SIZE && c >= 0 && c < SIZE && boardState[r][c] === null) openEnds++;
+
+    return { count, openEnds };
+}
+
+// Evaluate total score for placing `player` at (row, col)
+function evaluatePosition(row, col, player) {
+    const directions = [[0,1],[1,0],[1,1],[1,-1]];
+    let totalScore = 0;
+    for (const [dr, dc] of directions) {
+        const { count, openEnds } = analyzeLine(row, col, dr, dc, player);
+        totalScore += getPatternScore(count, openEnds);
+    }
+    return totalScore;
+}
+
+function getHint(player) {
+    const opponent = player === 'X' ? 'O' : 'X';
+
+    // First move: center
+    let hasAny = false;
+    for (let r = 0; r < SIZE && !hasAny; r++)
+        for (let c = 0; c < SIZE && !hasAny; c++)
+            if (boardState[r][c] !== null) hasAny = true;
+    if (!hasAny) return { r: Math.floor(SIZE / 2), c: Math.floor(SIZE / 2) };
+
+    // Collect candidate cells (empty cells within radius 2 of any piece)
+    const candidateSet = new Set();
+    for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+            if (boardState[r][c] !== null) {
+                for (let dr = -2; dr <= 2; dr++) {
+                    for (let dc = -2; dc <= 2; dc++) {
+                        const nr = r + dr, nc = c + dc;
+                        if (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE && boardState[nr][nc] === null) {
+                            candidateSet.add(nr * SIZE + nc);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let bestScore = -1;
+    let bestCell = null;
+
+    for (const key of candidateSet) {
+        const r = Math.floor(key / SIZE);
+        const c = key % SIZE;
+
+        // Evaluate attack value
+        boardState[r][c] = player;
+        const attackScore = evaluatePosition(r, c, player);
+        boardState[r][c] = null;
+
+        // Evaluate defense value
+        boardState[r][c] = opponent;
+        const defenseScore = evaluatePosition(r, c, opponent);
+        boardState[r][c] = null;
+
+        // Prefer attacking slightly over defending
+        const totalScore = attackScore * 1.1 + defenseScore;
+
+        if (totalScore > bestScore) {
+            bestScore = totalScore;
+            bestCell = { r, c };
+        }
+    }
+
+    return bestCell;
+}
+
+function showHint() {
+    if (!gameActive) return;
+    // Clear previous hints
+    Array.from(boardElement.children).forEach(c => c.classList.remove('hint-cell'));
+
+    const hint = getHint(currentPlayer);
+    if (hint) {
+        const index = hint.r * SIZE + hint.c;
+        const cell = boardElement.children[index];
+        cell.classList.add('hint-cell');
+        setTimeout(() => {
+            cell.classList.remove('hint-cell');
+        }, 2000);
+    }
+}
+
 btnRestart.addEventListener('click', initGame);
 btnUndo.addEventListener('click', undoMove);
+btnHint.addEventListener('click', showHint);
 btnModalRestart.addEventListener('click', initGame);
 
 btnSize.addEventListener('click', () => {
