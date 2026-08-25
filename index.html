@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#2c3e50">
+    <title>Cờ Caro 25x25</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>Cờ Caro</h1>
+            <div class="controls">
+                <button id="btn-restart">Chơi Lại</button>
+                <div class="status" id="status">Lượt của: <span id="current-player" class="player-x">X</span></div>
+            </div>
+        </header>
+        <main class="game-area">
+            <div id="board" class="board"></div>
+        </main>
+        <div id="winner-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2 id="winner-message"></h2>
+                <button id="btn-modal-restart">Chơi ván mới</button>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('Service Worker registered', reg))
+                .catch(err => console.error('Service Worker registration failed', err));
+        }
+    </script>
+</body>
+</html>
