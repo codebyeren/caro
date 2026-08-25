@@ -1,4 +1,4 @@
-const CACHE_NAME = 'caro-v4';
+const CACHE_NAME = 'caro-v5';
 const ASSETS = [
     './',
     './index.html',

@@ -1,4 +1,4 @@
-const SIZE = 25;
+let SIZE = 25;
 const WIN_CONDITION = 5; // 5 in a row to win
 
 let boardState = [];
@@ -11,6 +11,7 @@ const winnerModal = document.getElementById('winner-modal');
 const winnerMessage = document.getElementById('winner-message');
 const btnRestart = document.getElementById('btn-restart');
 const btnUndo = document.getElementById('btn-undo');
+const btnSize = document.getElementById('btn-size');
 const btnModalRestart = document.getElementById('btn-modal-restart');
 
 function initGame() {
@@ -24,6 +25,8 @@ function initGame() {
 
 function renderBoard() {
     boardElement.innerHTML = '';
+    boardElement.style.gridTemplateColumns = `repeat(${SIZE}, 40px)`;
+    boardElement.style.gridTemplateRows = `repeat(${SIZE}, 40px)`;
     for (let r = 0; r < SIZE; r++) {
         for (let c = 0; c < SIZE; c++) {
             const cell = document.createElement('div');
@@ -138,6 +141,21 @@ function endGame(message) {
 btnRestart.addEventListener('click', initGame);
 btnUndo.addEventListener('click', undoMove);
 btnModalRestart.addEventListener('click', initGame);
+
+btnSize.addEventListener('click', () => {
+    if (SIZE === 15) SIZE = 20;
+    else if (SIZE === 20) SIZE = 25;
+    else SIZE = 15;
+    
+    btnSize.textContent = `${SIZE}x${SIZE}`;
+    initGame();
+    
+    // Recenter board
+    const gameArea = document.querySelector('.game-area');
+    const wrapper = document.querySelector('.board-wrapper');
+    gameArea.scrollTop = (wrapper.scrollHeight - gameArea.clientHeight) / 2;
+    gameArea.scrollLeft = (wrapper.scrollWidth - gameArea.clientWidth) / 2;
+});
 
 // Center board on start for big screens
 window.addEventListener('load', () => {

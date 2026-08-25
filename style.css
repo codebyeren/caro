@@ -53,11 +53,31 @@ body {
     background-color: rgba(127, 140, 141, 1);
 }
 
-.right-btn {
+.right-controls {
+    position: absolute;
     right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    z-index: 20;
 }
-.right-btn:active {
+
+.right-controls .side-btn {
+    position: relative;
+    transform: none;
+    top: auto;
+}
+.right-controls .side-btn:active {
+    transform: scale(0.95);
     background-color: rgba(41, 128, 185, 1);
+}
+
+.text-btn {
+    font-size: 1rem;
+    font-weight: bold;
+    font-family: monospace;
 }
 
 /* Game Area with safe scrolling */
@@ -81,9 +101,6 @@ body {
 
 .board {
     display: grid;
-    /* 25 columns */
-    grid-template-columns: repeat(25, 40px);
-    grid-template-rows: repeat(25, 40px);
     gap: 1px;
     background-color: #7f8c8d;
     border: 2px solid #34495e;
