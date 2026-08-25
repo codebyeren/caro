@@ -30,10 +30,12 @@ body {
     background-color: rgba(52, 152, 219, 0.9);
     color: white;
     border: none;
-    padding: 20px 15px;
-    font-size: 1.2rem;
-    font-weight: bold;
-    border-radius: 12px;
+    width: 65px;
+    height: 65px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     cursor: pointer;
     box-shadow: 0 5px 15px rgba(0,0,0,0.4);
     transition: background-color 0.2s, transform 0.1s;
