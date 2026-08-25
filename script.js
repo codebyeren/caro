@@ -144,6 +144,7 @@ window.addEventListener('load', () => {
     initGame();
     // Scroll to center of the board
     const gameArea = document.querySelector('.game-area');
-    gameArea.scrollTop = (boardElement.scrollHeight - gameArea.clientHeight) / 2;
-    gameArea.scrollLeft = (boardElement.scrollWidth - gameArea.clientWidth) / 2;
+    const wrapper = document.querySelector('.board-wrapper');
+    gameArea.scrollTop = (wrapper.scrollHeight - gameArea.clientHeight) / 2;
+    gameArea.scrollLeft = (wrapper.scrollWidth - gameArea.clientWidth) / 2;
 });

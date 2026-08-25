@@ -11,13 +11,16 @@
 </head>
 <body>
     <div class="app-container">
-        <div class="top-controls">
-            <button id="btn-undo" class="btn-secondary">Thao tác lại</button>
-            <button id="btn-restart">Chơi Lại</button>
-        </div>
+        <!-- Floating side buttons -->
+        <button id="btn-undo" class="side-btn left-btn">Thao tác lại</button>
+        <button id="btn-restart" class="side-btn right-btn">Chơi Lại</button>
+        
         <main class="game-area">
-            <div id="board" class="board"></div>
+            <div class="board-wrapper">
+                <div id="board" class="board"></div>
+            </div>
         </main>
+
         <div id="winner-modal" class="modal hidden">
             <div class="modal-content">
                 <h2 id="winner-message"></h2>
