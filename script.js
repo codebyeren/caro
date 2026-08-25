@@ -4,19 +4,20 @@ const WIN_CONDITION = 5; // 5 in a row to win
 let boardState = [];
 let currentPlayer = 'X';
 let gameActive = true;
+let moveHistory = [];
 
 const boardElement = document.getElementById('board');
-const currentPlayerElement = document.getElementById('current-player');
 const winnerModal = document.getElementById('winner-modal');
 const winnerMessage = document.getElementById('winner-message');
 const btnRestart = document.getElementById('btn-restart');
+const btnUndo = document.getElementById('btn-undo');
 const btnModalRestart = document.getElementById('btn-modal-restart');
 
 function initGame() {
     boardState = Array(SIZE).fill(null).map(() => Array(SIZE).fill(null));
     currentPlayer = 'X';
     gameActive = true;
-    updatePlayerDisplay();
+    moveHistory = [];
     winnerModal.classList.add('hidden');
     renderBoard();
 }
@@ -46,6 +47,8 @@ function handleCellClick(e) {
     boardState[row][col] = currentPlayer;
     e.target.textContent = currentPlayer;
     e.target.classList.add(currentPlayer.toLowerCase());
+    
+    moveHistory.push({row, col, player: currentPlayer});
 
     const winningCells = checkWin(row, col, currentPlayer);
     
@@ -54,13 +57,30 @@ function handleCellClick(e) {
         endGame(`Người chơi ${currentPlayer} chiến thắng!`);
     } else {
         currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
-        updatePlayerDisplay();
     }
 }
 
-function updatePlayerDisplay() {
-    currentPlayerElement.textContent = currentPlayer;
-    currentPlayerElement.className = currentPlayer === 'X' ? 'player-x' : 'player-o';
+function undoMove() {
+    if (moveHistory.length === 0) return;
+    
+    const lastMove = moveHistory.pop();
+    boardState[lastMove.row][lastMove.col] = null;
+    
+    // Update DOM
+    const index = lastMove.row * SIZE + lastMove.col;
+    const cell = boardElement.children[index];
+    cell.textContent = '';
+    cell.classList.remove('x', 'o', 'winning-cell');
+    
+    // Reset state if game was won
+    if (!gameActive) {
+        gameActive = true;
+        winnerModal.classList.add('hidden');
+        // Clear winning cells styles
+        Array.from(boardElement.children).forEach(c => c.classList.remove('winning-cell'));
+    }
+    
+    currentPlayer = lastMove.player;
 }
 
 function checkWin(row, col, player) {
@@ -116,6 +136,7 @@ function endGame(message) {
 }
 
 btnRestart.addEventListener('click', initGame);
+btnUndo.addEventListener('click', undoMove);
 btnModalRestart.addEventListener('click', initGame);
 
 // Center board on start for big screens
