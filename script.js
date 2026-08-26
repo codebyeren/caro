@@ -139,141 +139,392 @@ function endGame(message) {
     winnerModal.classList.remove('hidden');
 }
 
-// ===== ADVANCED HINT AI ENGINE =====
+// ================================================================
+//  CARO AI ENGINE v4 — Professional Grade (Minimax + Alpha-Beta + Zobrist + TT)
+// ================================================================
 
-// Score table for patterns: key = "count_openEnds"
-// count = consecutive same-player pieces in a line
-// openEnds = how many ends of that line are open (0, 1, or 2)
-const SCORE_TABLE = {
-    '5_0': 1000000, '5_1': 1000000, '5_2': 1000000,
-    '4_2': 500000,   // Open 4: unstoppable, 2 ways to win
-    '4_1': 50000,    // Closed 4: 1 way to win
-    '4_0': 0,
-    '3_2': 10000,    // Open 3: will become open-4 next turn
-    '3_1': 1000,     // Closed 3
-    '3_0': 0,
-    '2_2': 500,      // Open 2
-    '2_1': 100,
-    '2_0': 0,
-    '1_2': 50,       // Open 1
-    '1_1': 10,
-    '1_0': 0,
-};
-
-function getPatternScore(count, openEnds) {
-    if (count >= 5) return SCORE_TABLE['5_2'];
-    const key = `${count}_${openEnds}`;
-    return SCORE_TABLE[key] || 0;
-}
-
-// Analyze a line in one direction from (row, col) for a given player
-function analyzeLine(row, col, dr, dc, player) {
-    let count = 1;
-    let openEnds = 0;
-
-    // Scan positive direction
-    let r = row + dr, c = col + dc;
-    while (r >= 0 && r < SIZE && c >= 0 && c < SIZE && boardState[r][c] === player) {
-        count++;
-        r += dr;
-        c += dc;
+class GomokuAI {
+    constructor(size) {
+        this.size = size;
+        const totalCells = size * size;
+        this.board = new Uint8Array(totalCells);
+        this.neighborCount = new Int32Array(totalCells);
+        this.globalScore = 0;
+        
+        // Zobrist Hashing
+        this.zobrist = new Int32Array(totalCells * 4); 
+        this.hashHigh = 0;
+        this.hashLow = 0;
+        for (let i = 0; i < this.zobrist.length; i++) {
+            this.zobrist[i] = (Math.random() * 0x100000000) | 0;
+        }
+        
+        // Transposition Table (TT)
+        this.TT_SIZE = 1000003;
+        this.ttHashesHigh = new Int32Array(this.TT_SIZE);
+        this.ttHashesLow = new Int32Array(this.TT_SIZE);
+        this.ttScores = new Float64Array(this.TT_SIZE);
+        this.ttDepths = new Int8Array(this.TT_SIZE);
+        this.ttFlags = new Int8Array(this.TT_SIZE);
+        this.ttBestMove = new Int16Array(this.TT_SIZE);
+        
+        // Base-10 exponential window scoring
+        this.WINDOW_SCORES = [0, 1, 10, 1000, 100000, 10000000000];
+        
+        this.startTime = 0;
+        this.timeLimit = 1500; // 1.5 seconds per move
+        this.timeOut = false;
     }
-    if (r >= 0 && r < SIZE && c >= 0 && c < SIZE && boardState[r][c] === null) openEnds++;
-
-    // Scan negative direction
-    r = row - dr;
-    c = col - dc;
-    while (r >= 0 && r < SIZE && c >= 0 && c < SIZE && boardState[r][c] === player) {
-        count++;
-        r -= dr;
-        c -= dc;
-    }
-    if (r >= 0 && r < SIZE && c >= 0 && c < SIZE && boardState[r][c] === null) openEnds++;
-
-    return { count, openEnds };
-}
-
-// Evaluate total score for placing `player` at (row, col)
-function evaluatePosition(row, col, player) {
-    const directions = [[0,1],[1,0],[1,1],[1,-1]];
-    let totalScore = 0;
-    for (const [dr, dc] of directions) {
-        const { count, openEnds } = analyzeLine(row, col, dr, dc, player);
-        totalScore += getPatternScore(count, openEnds);
-    }
-    return totalScore;
-}
-
-function getHint(player) {
-    const opponent = player === 'X' ? 'O' : 'X';
-
-    // First move: center
-    let hasAny = false;
-    for (let r = 0; r < SIZE && !hasAny; r++)
-        for (let c = 0; c < SIZE && !hasAny; c++)
-            if (boardState[r][c] !== null) hasAny = true;
-    if (!hasAny) return { r: Math.floor(SIZE / 2), c: Math.floor(SIZE / 2) };
-
-    // Collect candidate cells (empty cells within radius 2 of any piece)
-    const candidateSet = new Set();
-    for (let r = 0; r < SIZE; r++) {
-        for (let c = 0; c < SIZE; c++) {
-            if (boardState[r][c] !== null) {
-                for (let dr = -2; dr <= 2; dr++) {
-                    for (let dc = -2; dc <= 2; dc++) {
-                        const nr = r + dr, nc = c + dc;
-                        if (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE && boardState[nr][nc] === null) {
-                            candidateSet.add(nr * SIZE + nc);
-                        }
-                    }
+    
+    // Sync state from DOM board array
+    syncFromState(boardState) {
+        this.board.fill(0);
+        this.neighborCount.fill(0);
+        this.globalScore = 0;
+        this.hashHigh = 0;
+        this.hashLow = 0;
+        
+        for (let r = 0; r < this.size; r++) {
+            for (let c = 0; c < this.size; c++) {
+                if (boardState[r][c] !== null) {
+                    this.makeMove(r, c, boardState[r][c] === 'X' ? 1 : 2);
                 }
             }
         }
     }
 
-    let bestScore = -1;
-    let bestCell = null;
+    // Evaluate a single 5-cell window
+    evaluateWindow(startR, startC, dr, dc, sign) {
+        let xCount = 0, oCount = 0;
+        let idx = startR * this.size + startC;
+        const step = dr * this.size + dc;
+        
+        for (let i = 0; i < 5; i++) {
+            const p = this.board[idx];
+            if (p === 1) xCount++;
+            else if (p === 2) oCount++;
+            idx += step;
+        }
+        
+        if (xCount > 0 && oCount > 0) return 0; // Blocked window
+        if (xCount === 5) return 10000000000 * sign;
+        if (oCount === 5) return -10000000000 * sign;
+        if (xCount > 0) return this.WINDOW_SCORES[xCount] * sign;
+        if (oCount > 0) return -this.WINDOW_SCORES[oCount] * sign;
+        return 0;
+    }
 
-    for (const key of candidateSet) {
-        const r = Math.floor(key / SIZE);
-        const c = key % SIZE;
+    // Calculate score of all windows passing through (r,c)
+    updateScoreForCell(r, c, sign) {
+        let scoreDelta = 0;
+        const dirs = [[0,1], [1,0], [1,1], [1,-1]];
+        
+        for (const [dr, dc] of dirs) {
+            for (let i = 0; i < 5; i++) {
+                const startR = r - i*dr;
+                const startC = c - i*dc;
+                const endR = startR + 4*dr;
+                const endC = startC + 4*dc;
+                
+                if (startR >= 0 && startR < this.size && startC >= 0 && startC < this.size &&
+                    endR >= 0 && endR < this.size && endC >= 0 && endC < this.size) {
+                    scoreDelta += this.evaluateWindow(startR, startC, dr, dc, sign);
+                }
+            }
+        }
+        return scoreDelta;
+    }
 
-        // Evaluate attack value
-        boardState[r][c] = player;
-        const attackScore = evaluatePosition(r, c, player);
-        boardState[r][c] = null;
-
-        // Evaluate defense value
-        boardState[r][c] = opponent;
-        const defenseScore = evaluatePosition(r, c, opponent);
-        boardState[r][c] = null;
-
-        // Prefer attacking slightly over defending
-        const totalScore = attackScore * 1.1 + defenseScore;
-
-        if (totalScore > bestScore) {
-            bestScore = totalScore;
-            bestCell = { r, c };
+    // Update active candidate zone
+    updateNeighbors(r, c, val) {
+        for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+                const nr = r + dr, nc = c + dc;
+                if (nr >= 0 && nr < this.size && nc >= 0 && nc < this.size) {
+                    this.neighborCount[nr * this.size + nc] += val;
+                }
+            }
         }
     }
 
-    return bestCell;
+    // O(1) Move execution
+    makeMove(r, c, player) {
+        this.globalScore += this.updateScoreForCell(r, c, -1);
+        const idx = r * this.size + c;
+        this.board[idx] = player;
+        
+        const zIdx = (idx * 2 + (player - 1)) * 2;
+        this.hashHigh ^= this.zobrist[zIdx];
+        this.hashLow ^= this.zobrist[zIdx + 1];
+        
+        this.updateNeighbors(r, c, 1);
+        this.globalScore += this.updateScoreForCell(r, c, 1);
+    }
+
+    undoMove(r, c, player) {
+        this.globalScore += this.updateScoreForCell(r, c, -1);
+        const idx = r * this.size + c;
+        this.board[idx] = 0;
+        
+        const zIdx = (idx * 2 + (player - 1)) * 2;
+        this.hashHigh ^= this.zobrist[zIdx];
+        this.hashLow ^= this.zobrist[zIdx + 1];
+        
+        this.updateNeighbors(r, c, -1);
+        this.globalScore += this.updateScoreForCell(r, c, 1);
+    }
+
+    getCandidates() {
+        const moves = [];
+        const max = this.size * this.size;
+        for (let i = 0; i < max; i++) {
+            if (this.board[i] === 0 && this.neighborCount[i] > 0) moves.push(i);
+        }
+        return moves;
+    }
+
+    // Heuristic for Move Ordering
+    evaluateMoveDelta(idx, player) {
+        const r = Math.floor(idx / this.size);
+        const c = idx % this.size;
+        const scoreBefore = this.updateScoreForCell(r, c, 1);
+        this.board[idx] = player;
+        const scoreAfter = this.updateScoreForCell(r, c, 1);
+        this.board[idx] = 0; // Revert immediately
+        return Math.abs(scoreAfter - scoreBefore);
+    }
+
+    getTT(depth, alpha, beta) {
+        const index = (this.hashLow >>> 0) % this.TT_SIZE;
+        if (this.ttHashesHigh[index] === this.hashHigh && this.ttHashesLow[index] === this.hashLow) {
+            if (this.ttDepths[index] >= depth) {
+                const flag = this.ttFlags[index];
+                const score = this.ttScores[index];
+                if (flag === 0) return score;
+                if (flag === 1 && score <= alpha) return score;
+                if (flag === 2 && score >= beta) return score;
+            }
+        }
+        return null;
+    }
+
+    storeTT(depth, score, flag, bestMoveIdx) {
+        const index = (this.hashLow >>> 0) % this.TT_SIZE;
+        this.ttHashesHigh[index] = this.hashHigh;
+        this.ttHashesLow[index] = this.hashLow;
+        this.ttScores[index] = score;
+        this.ttDepths[index] = depth;
+        this.ttFlags[index] = flag;
+        this.ttBestMove[index] = bestMoveIdx;
+    }
+
+    minimax(depth, alpha, beta, isMaximizing) {
+        if (this.timeOut) return 0;
+        if (Date.now() - this.startTime > this.timeLimit) {
+            this.timeOut = true;
+            return 0;
+        }
+
+        // Terminal win/loss states
+        if (this.globalScore > 9000000000) return 9000000000 + depth;
+        if (this.globalScore < -9000000000) return -9000000000 - depth;
+        if (depth === 0) return this.globalScore;
+
+        const ttVal = this.getTT(depth, alpha, beta);
+        if (ttVal !== null) return ttVal;
+
+        const moves = this.getCandidates();
+        if (moves.length === 0) return 0;
+
+        const index = (this.hashLow >>> 0) % this.TT_SIZE;
+        let ttBest = -1;
+        if (this.ttHashesHigh[index] === this.hashHigh && this.ttHashesLow[index] === this.hashLow) {
+            ttBest = this.ttBestMove[index];
+        }
+
+        const currentPlayer = isMaximizing ? 1 : 2;
+        const currentOpponent = isMaximizing ? 2 : 1;
+
+        const scoredMoves = [];
+        for (let i = 0; i < moves.length; i++) {
+            const m = moves[i];
+            if (m === ttBest) {
+                scoredMoves.push({ idx: m, score: Infinity });
+            } else {
+                const myDelta = this.evaluateMoveDelta(m, currentPlayer);
+                const oppDelta = this.evaluateMoveDelta(m, currentOpponent);
+                scoredMoves.push({ idx: m, score: myDelta + oppDelta });
+            }
+        }
+        scoredMoves.sort((a, b) => b.score - a.score);
+
+        const MAX_BRANCHES = depth > 2 ? 15 : 20;
+        const branches = Math.min(scoredMoves.length, MAX_BRANCHES);
+
+        let bestMoveIdx = -1;
+        let origAlpha = alpha;
+
+        if (isMaximizing) {
+            let maxEval = -Infinity;
+            for (let i = 0; i < branches; i++) {
+                const m = scoredMoves[i].idx;
+                const r = Math.floor(m / this.size);
+                const c = m % this.size;
+
+                this.makeMove(r, c, 1);
+                const ev = this.minimax(depth - 1, alpha, beta, false);
+                this.undoMove(r, c, 1);
+
+                if (ev > maxEval) {
+                    maxEval = ev;
+                    bestMoveIdx = m;
+                }
+                alpha = Math.max(alpha, ev);
+                if (beta <= alpha) break;
+            }
+
+            let flag = 0;
+            if (maxEval <= origAlpha) flag = 1;
+            else if (maxEval >= beta) flag = 2;
+
+            this.storeTT(depth, maxEval, flag, bestMoveIdx);
+            return maxEval;
+        } else {
+            let minEval = Infinity;
+            for (let i = 0; i < branches; i++) {
+                const m = scoredMoves[i].idx;
+                const r = Math.floor(m / this.size);
+                const c = m % this.size;
+
+                this.makeMove(r, c, 2);
+                const ev = this.minimax(depth - 1, alpha, beta, true);
+                this.undoMove(r, c, 2);
+
+                if (ev < minEval) {
+                    minEval = ev;
+                    bestMoveIdx = m;
+                }
+                beta = Math.min(beta, ev);
+                if (beta <= alpha) break;
+            }
+
+            let flag = 0;
+            if (minEval >= beta) flag = 2;
+            else if (minEval <= origAlpha) flag = 1;
+
+            this.storeTT(depth, minEval, flag, bestMoveIdx);
+            return minEval;
+        }
+    }
+
+    getBestMove(playerSymbol, timeLimitMs = 1500) {
+        const isMaximizing = playerSymbol === 'X';
+        const aiPlayer = isMaximizing ? 1 : 2;
+        const opponent = isMaximizing ? 2 : 1;
+
+        this.startTime = Date.now();
+        this.timeLimit = timeLimitMs;
+        this.timeOut = false;
+
+        let bestMove = -1;
+        // Iterative deepening up to depth 12
+        for (let depth = 1; depth <= 12; depth++) {
+            let currentBestMove = -1;
+            let bestScore = isMaximizing ? -Infinity : Infinity;
+            let alpha = -Infinity;
+            let beta = Infinity;
+
+            const moves = this.getCandidates();
+            if (moves.length === 0) return { r: Math.floor(this.size / 2), c: Math.floor(this.size / 2) };
+
+            const index = (this.hashLow >>> 0) % this.TT_SIZE;
+            let ttBest = -1;
+            if (this.ttHashesHigh[index] === this.hashHigh && this.ttHashesLow[index] === this.hashLow) {
+                ttBest = this.ttBestMove[index];
+            }
+
+            const scoredMoves = [];
+            for (let m of moves) {
+                if (m === ttBest) scoredMoves.push({ idx: m, score: Infinity });
+                else {
+                    const myDelta = this.evaluateMoveDelta(m, aiPlayer);
+                    const oppDelta = this.evaluateMoveDelta(m, opponent);
+                    scoredMoves.push({ idx: m, score: myDelta + oppDelta });
+                }
+            }
+            scoredMoves.sort((a, b) => b.score - a.score);
+
+            const MAX_BRANCHES = depth === 1 ? 30 : 15;
+            const branches = Math.min(scoredMoves.length, MAX_BRANCHES);
+
+            for (let i = 0; i < branches; i++) {
+                const m = scoredMoves[i].idx;
+                const r = Math.floor(m / this.size);
+                const c = m % this.size;
+
+                this.makeMove(r, c, aiPlayer);
+                const ev = this.minimax(depth - 1, alpha, beta, !isMaximizing);
+                this.undoMove(r, c, aiPlayer);
+
+                if (this.timeOut) break;
+
+                if (isMaximizing) {
+                    if (ev > bestScore) { bestScore = ev; currentBestMove = m; }
+                    alpha = Math.max(alpha, ev);
+                } else {
+                    if (ev < bestScore) { bestScore = ev; currentBestMove = m; }
+                    beta = Math.min(beta, ev);
+                }
+            }
+
+            if (this.timeOut) break;
+            if (currentBestMove !== -1) bestMove = currentBestMove;
+
+            // Stop early if a forced win/loss is detected
+            if (Math.abs(bestScore) > 9000000000) break;
+        }
+
+        if (bestMove === -1) {
+            const moves = this.getCandidates();
+            if (moves.length > 0) bestMove = moves[0];
+            else return { r: Math.floor(this.size / 2), c: Math.floor(this.size / 2) };
+        }
+
+        return { r: Math.floor(bestMove / this.size), c: bestMove % this.size };
+    }
+}
+
+// Global AI Instance
+let aiEngine = null;
+
+function getHint(player) {
+    if (!aiEngine) aiEngine = new GomokuAI(SIZE);
+    aiEngine.syncFromState(boardState);
+    return aiEngine.getBestMove(player, 1500); // 1.5 seconds thinking time
 }
 
 function showHint() {
     if (!gameActive) return;
-    // Clear previous hints
     Array.from(boardElement.children).forEach(c => c.classList.remove('hint-cell'));
 
-    const hint = getHint(currentPlayer);
-    if (hint) {
-        const index = hint.r * SIZE + hint.c;
-        const cell = boardElement.children[index];
-        cell.classList.add('hint-cell');
-        setTimeout(() => {
-            cell.classList.remove('hint-cell');
-        }, 2000);
-    }
+    btnHint.style.opacity = '0.5';
+    btnHint.style.pointerEvents = 'none';
+
+    setTimeout(() => {
+        const hint = getHint(currentPlayer);
+        btnHint.style.opacity = '1';
+        btnHint.style.pointerEvents = 'auto';
+
+        if (hint) {
+            const index = hint.r * SIZE + hint.c;
+            const cell = boardElement.children[index];
+            cell.classList.add('hint-cell');
+            cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+            setTimeout(() => {
+                cell.classList.remove('hint-cell');
+            }, 2500);
+        }
+    }, 50);
 }
 
 btnRestart.addEventListener('click', initGame);
@@ -287,6 +538,7 @@ btnSize.addEventListener('click', () => {
     else SIZE = 15;
     
     btnSize.textContent = `${SIZE}x${SIZE}`;
+    aiEngine = new GomokuAI(SIZE); // Reset AI for new size
     initGame();
     
     // Recenter board
@@ -298,6 +550,7 @@ btnSize.addEventListener('click', () => {
 
 // Center board on start for big screens
 window.addEventListener('load', () => {
+    aiEngine = new GomokuAI(SIZE);
     initGame();
     // Scroll to center of the board
     const gameArea = document.querySelector('.game-area');
