@@ -1,9 +1,10 @@
-const CACHE_NAME = 'caro-v12';
+const CACHE_NAME = 'caro-v14';
 const ASSETS = [
     './',
     './index.html',
     './style.css',
     './script.js',
+    './worker.js',
     './icon.svg',
     './manifest.json'
 ];
