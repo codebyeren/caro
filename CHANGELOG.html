@@ -18,6 +18,15 @@
 <body>
     <h1>Project Changelog</h1>
     <div class="entry">
+        <div class="timestamp">2026-08-26T17:30:00+07:00</div>
+        <div>
+            <span class="tag fixed">Fixed</span>
+            <span class="tag infra">Infra</span>
+        </div>
+        <div class="file-list">Files: index.html, script.js</div>
+        <p>Fixed a critical bug on mobile where the AI would hang indefinitely (user can only play X). This was caused by mobile browsers blocking Web Workers on local file:/// URLs (CORS policy) and aggressive PWA caching. Added a "Fallback AI" system that automatically detects blocked Web Workers and runs the AI synchronously on the main thread instead. Also injected a hard-cache-busting script into index.html to force mobile browsers to fetch the latest version.</p>
+    </div>
+    <div class="entry">
         <div class="timestamp">2026-08-25T16:54:00+07:00</div>
         <div>
             <span class="tag added">Added</span>

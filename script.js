@@ -459,6 +459,15 @@ function setupWorker() {
             console.warn('Worker error (CORS/Blob blocked). Falling back to main thread.');
             useWorker = false;
             initFallbackAI();
+            if (isAIThinking) {
+                isAIThinking = false;
+                if (gameActive) {
+                    setTimeout(() => {
+                        const evt = new CustomEvent('forceAI');
+                        window.dispatchEvent(evt);
+                    }, 500);
+                }
+            }
         };
     } catch (e) {
         console.warn('Worker construction failed. Falling back to main thread.');
