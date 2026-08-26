@@ -423,38 +423,75 @@ self.onmessage = function(e) {
 `;
 const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
 const workerUrl = URL.createObjectURL(workerBlob);
-function setupWorker() {
-    if (aiWorker) aiWorker.terminate();
-    aiWorker = new Worker(workerUrl);
-    aiWorker.onmessage = function(e) {
-        if (e.data.type === 'MOVE_RESULT') {
-            isAIThinking = false;
-            document.body.style.cursor = 'default';
-            btnDifficulty.classList.remove('thinking-pulse');
-            
-            const hint = e.data.move;
-            
-            if (e.data.action === 'PLAY' && gameActive) {
-                if (hint) {
-                    const index = hint.r * SIZE + hint.c;
-                    const cell = boardElement.children[index];
-                    makeMoveOnBoard(hint.r, hint.c, aiPlayer, cell);
-                    cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-                }
-            } else if (e.data.action === 'HINT' && gameActive) {
-                btnHint.style.opacity = '1';
-                btnHint.style.pointerEvents = 'auto';
-                if (hint) {
-                    const index = hint.r * SIZE + hint.c;
-                    const cell = boardElement.children[index];
-                    cell.classList.add('hint-cell');
-                    cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-                    setTimeout(() => cell.classList.remove('hint-cell'), 2500);
-                }
-            }
-        }
-    };
+
+let useWorker = true;
+let fallbackAI = null;
+
+function initFallbackAI() {
+    if (typeof GomokuAI !== 'undefined') return;
+    const safeCode = workerCode.split('self.onmessage')[0];
+    const script = document.createElement('script');
+    script.textContent = safeCode;
+    document.head.appendChild(script);
 }
+
+function setupWorker() {
+    const isLocal = window.location.protocol === 'file:' || window.location.protocol === 'content:';
+    if (isLocal) {
+        useWorker = false;
+        initFallbackAI();
+        return;
+    }
+
+    try {
+        if (aiWorker) aiWorker.terminate();
+        const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+        const workerUrl = URL.createObjectURL(workerBlob);
+        aiWorker = new Worker(workerUrl);
+        
+        aiWorker.onmessage = function(e) {
+            if (e.data.type === 'MOVE_RESULT') {
+                handleAIResult(e.data.move, e.data.action);
+            }
+        };
+        
+        aiWorker.onerror = function(e) {
+            console.warn('Worker error (CORS/Blob blocked). Falling back to main thread.');
+            useWorker = false;
+            initFallbackAI();
+        };
+    } catch (e) {
+        console.warn('Worker construction failed. Falling back to main thread.');
+        useWorker = false;
+        initFallbackAI();
+    }
+}
+
+function handleAIResult(hint, action) {
+    isAIThinking = false;
+    document.body.style.cursor = 'default';
+    btnDifficulty.classList.remove('thinking-pulse');
+    
+    if (action === 'PLAY' && gameActive) {
+        if (hint) {
+            const index = hint.r * SIZE + hint.c;
+            const cell = boardElement.children[index];
+            makeMoveOnBoard(hint.r, hint.c, aiPlayer, cell);
+            cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        }
+    } else if (action === 'HINT' && gameActive) {
+        btnHint.style.opacity = '1';
+        btnHint.style.pointerEvents = 'auto';
+        if (hint) {
+            const index = hint.r * SIZE + hint.c;
+            const cell = boardElement.children[index];
+            cell.classList.add('hint-cell');
+            cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+            setTimeout(() => cell.classList.remove('hint-cell'), 2500);
+        }
+    }
+}
+
 setupWorker();
 
 function initGame() {
@@ -474,7 +511,7 @@ function initGame() {
     winnerModal.classList.add('hidden');
     renderBoard();
     
-    aiWorker.postMessage({ type: 'INIT', size: SIZE });
+    if (useWorker && aiWorker) aiWorker.postMessage({ type: 'INIT', size: SIZE });
     
     if (gameMode === 'PvE_Machine' && aiPlayer === 'X') {
         setTimeout(playAITurn, 100);
@@ -544,14 +581,27 @@ function playAITurn() {
     else if (aiLevel === 3) { timeLimit = 5000; maxDepth = 20; }
     else if (aiLevel === 4) { timeLimit = 300000; maxDepth = 30; } // Unlimited: 5 mins, depth 30
     
+    const action = 'PLAY';
+    const player = aiPlayer;
+    
+    if (!useWorker) {
+        setTimeout(() => {
+            if (!fallbackAI) fallbackAI = new GomokuAI(SIZE);
+            fallbackAI.syncFromState(boardState);
+            const move = fallbackAI.getBestMove(player, timeLimit, maxDepth);
+            handleAIResult(move, action);
+        }, 100);
+        return;
+    }
+    
     aiWorker.postMessage({
         type: 'GET_MOVE',
         boardState: boardState,
         size: SIZE,
-        player: aiPlayer,
+        player: player,
         timeLimit: timeLimit,
         maxDepth: maxDepth,
-        action: 'PLAY'
+        action: action
     });
 }
 
@@ -568,14 +618,27 @@ function showHint() {
     else if (aiLevel === 3) { timeLimit = 5000; maxDepth = 20; }
     else if (aiLevel === 4) { timeLimit = 300000; maxDepth = 30; }
     
+    const action = 'HINT';
+    const player = currentPlayer;
+    
+    if (!useWorker) {
+        setTimeout(() => {
+            if (!fallbackAI) fallbackAI = new GomokuAI(SIZE);
+            fallbackAI.syncFromState(boardState);
+            const move = fallbackAI.getBestMove(player, timeLimit, maxDepth);
+            handleAIResult(move, action);
+        }, 100);
+        return;
+    }
+    
     aiWorker.postMessage({
         type: 'GET_MOVE',
         boardState: boardState,
         size: SIZE,
-        player: currentPlayer,
+        player: player,
         timeLimit: timeLimit,
         maxDepth: maxDepth,
-        action: 'HINT'
+        action: action
     });
 }
 
@@ -589,7 +652,7 @@ function undoMove() {
         btnDifficulty.classList.remove('thinking-pulse');
         btnHint.style.opacity = '1';
         btnHint.style.pointerEvents = 'auto';
-        aiWorker.postMessage({ type: 'INIT', size: SIZE }); // Make sure new worker has size
+        if (useWorker && aiWorker) aiWorker.postMessage({ type: 'INIT', size: SIZE }); // Make sure new worker has size
     }
     
     let movesToUndo = 1;
