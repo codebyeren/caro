@@ -5,6 +5,8 @@ let boardState = [];
 let currentPlayer = 'X';
 let gameActive = true;
 let moveHistory = [];
+let gameMode = 'PvP'; // 'PvP', 'PvE_Human', 'PvE_Machine'
+let aiPlayer = null;  // 'O' when PvE_Human, 'X' when PvE_Machine
 
 const boardElement = document.getElementById('board');
 const winnerModal = document.getElementById('winner-modal');
@@ -13,7 +15,12 @@ const btnRestart = document.getElementById('btn-restart');
 const btnUndo = document.getElementById('btn-undo');
 const btnSize = document.getElementById('btn-size');
 const btnHint = document.getElementById('btn-hint');
+const btnMode = document.getElementById('btn-mode');
 const btnModalRestart = document.getElementById('btn-modal-restart');
+
+const iconPvP = document.getElementById('icon-pvp');
+const iconPvEHuman = document.getElementById('icon-pve-human');
+const iconPvEMachine = document.getElementById('icon-pve-machine');
 
 function initGame() {
     boardState = Array(SIZE).fill(null).map(() => Array(SIZE).fill(null));
@@ -22,6 +29,11 @@ function initGame() {
     moveHistory = [];
     winnerModal.classList.add('hidden');
     renderBoard();
+    
+    // If AI is X, it must play the first turn
+    if (gameMode === 'PvE_Machine' && aiPlayer === 'X') {
+        setTimeout(playAITurn, 100);
+    }
 }
 
 function renderBoard() {
@@ -42,49 +54,89 @@ function renderBoard() {
 
 function handleCellClick(e) {
     if (!gameActive) return;
+    
+    // In PvE mode, ignore clicks if it's the machine's turn.
+    if (aiPlayer !== null && currentPlayer === aiPlayer) return;
 
     const row = parseInt(e.target.dataset.row);
     const col = parseInt(e.target.dataset.col);
 
     if (boardState[row][col] !== null) return;
 
-    boardState[row][col] = currentPlayer;
-    e.target.textContent = currentPlayer;
-    e.target.classList.add(currentPlayer.toLowerCase());
-    
-    moveHistory.push({row, col, player: currentPlayer});
+    makeMoveOnBoard(row, col, currentPlayer, e.target);
+}
 
-    const winningCells = checkWin(row, col, currentPlayer);
+function makeMoveOnBoard(row, col, player, cellElement) {
+    boardState[row][col] = player;
+    cellElement.textContent = player;
+    cellElement.classList.add(player.toLowerCase());
+    
+    moveHistory.push({row, col, player});
+
+    const winningCells = checkWin(row, col, player);
     
     if (winningCells) {
         highlightWinningCells(winningCells);
-        endGame(`Người chơi ${currentPlayer} chiến thắng!`);
+        endGame(`Người chơi ${player} chiến thắng!`);
     } else {
         currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+        
+        // Trigger AI turn if it is PvE mode and it's AI's turn
+        if (gameActive && aiPlayer !== null && currentPlayer === aiPlayer) {
+            setTimeout(playAITurn, 10);
+        }
     }
+}
+
+function playAITurn() {
+    if (!gameActive || aiPlayer === null || currentPlayer !== aiPlayer) return;
+    
+    document.body.style.cursor = 'wait';
+    // Small delay to allow UI to render human move
+    setTimeout(() => {
+        const hint = getHint(aiPlayer);
+        document.body.style.cursor = 'default';
+        if (hint) {
+            const index = hint.r * SIZE + hint.c;
+            const cell = boardElement.children[index];
+            makeMoveOnBoard(hint.r, hint.c, aiPlayer, cell);
+            cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        }
+    }, 50);
 }
 
 function undoMove() {
     if (moveHistory.length === 0) return;
     
-    const lastMove = moveHistory.pop();
-    boardState[lastMove.row][lastMove.col] = null;
+    // In PvE mode, if it's the human's turn, we must undo twice to remove both the AI's last move and human's last move
+    let movesToUndo = 1;
+    if (aiPlayer !== null && currentPlayer !== aiPlayer && moveHistory.length >= 2) {
+        movesToUndo = 2;
+    }
     
-    // Update DOM
-    const index = lastMove.row * SIZE + lastMove.col;
-    const cell = boardElement.children[index];
-    cell.textContent = '';
-    cell.classList.remove('x', 'o', 'winning-cell');
+    for (let i = 0; i < movesToUndo; i++) {
+        if (moveHistory.length === 0) break;
+        const lastMove = moveHistory.pop();
+        boardState[lastMove.row][lastMove.col] = null;
+        
+        const index = lastMove.row * SIZE + lastMove.col;
+        const cell = boardElement.children[index];
+        cell.textContent = '';
+        cell.classList.remove('x', 'o', 'winning-cell');
+        currentPlayer = lastMove.player;
+    }
     
     // Reset state if game was won
     if (!gameActive) {
         gameActive = true;
         winnerModal.classList.add('hidden');
-        // Clear winning cells styles
         Array.from(boardElement.children).forEach(c => c.classList.remove('winning-cell'));
     }
     
-    currentPlayer = lastMove.player;
+    // In edge case: if we undid all the way back to the start and AI goes first, trigger AI.
+    if (gameMode === 'PvE_Machine' && currentPlayer === 'X' && moveHistory.length === 0) {
+        setTimeout(playAITurn, 100);
+    }
 }
 
 function checkWin(row, col, player) {
@@ -99,7 +151,6 @@ function checkWin(row, col, player) {
         let count = 1;
         let cells = [{r: row, c: col}];
 
-        // Check positive direction
         let r = row + dr;
         let c = col + dc;
         while (r >= 0 && r < SIZE && c >= 0 && c < SIZE && boardState[r][c] === player) {
@@ -109,7 +160,6 @@ function checkWin(row, col, player) {
             c += dc;
         }
 
-        // Check negative direction
         r = row - dr;
         c = col - dc;
         while (r >= 0 && r < SIZE && c >= 0 && c < SIZE && boardState[r][c] === player) {
@@ -119,9 +169,7 @@ function checkWin(row, col, player) {
             c -= dc;
         }
 
-        if (count >= WIN_CONDITION) {
-            return cells;
-        }
+        if (count >= WIN_CONDITION) return cells;
     }
     return null;
 }
@@ -531,6 +579,31 @@ btnRestart.addEventListener('click', initGame);
 btnUndo.addEventListener('click', undoMove);
 btnHint.addEventListener('click', showHint);
 btnModalRestart.addEventListener('click', initGame);
+
+btnMode.addEventListener('click', () => {
+    iconPvP.style.display = 'none';
+    iconPvEHuman.style.display = 'none';
+    iconPvEMachine.style.display = 'none';
+
+    if (gameMode === 'PvP') {
+        gameMode = 'PvE_Human';
+        aiPlayer = 'O';
+        iconPvEHuman.style.display = 'block';
+        btnMode.title = 'Chế độ chơi (Đang: Máy vs Người - Bạn đánh trước)';
+    } else if (gameMode === 'PvE_Human') {
+        gameMode = 'PvE_Machine';
+        aiPlayer = 'X';
+        iconPvEMachine.style.display = 'block';
+        btnMode.title = 'Chế độ chơi (Đang: Máy vs Người - Máy đánh trước)';
+    } else {
+        gameMode = 'PvP';
+        aiPlayer = null;
+        iconPvP.style.display = 'block';
+        btnMode.title = 'Chế độ chơi (Đang: Người vs Người)';
+    }
+    // Restart game when switching modes
+    initGame();
+});
 
 btnSize.addEventListener('click', () => {
     if (SIZE === 15) SIZE = 20;
