@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#2c3e50">
+    <title>Cờ Caro 25x25 (v17)</title>
+    <script>
+        // BUST CACHE ON MOBILE: Force unregister old Service Workers and reload page once if we did
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                let unreg = false;
+                for(let registration of registrations) {
+                    registration.unregister();
+                    unreg = true;
+                }
+                if (unreg && !window.location.search.includes('cleared')) {
+                    window.location.href = window.location.href + (window.location.href.includes('?') ? '&' : '?') + 'cleared=1';
+                }
+            });
+        }
+    </script>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Floating side buttons -->
+        <div class="left-controls">
+            <button id="btn-hint" class="side-btn" title="Gợi ý">
+                <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 18h6"></path>
+                    <path d="M10 22h4"></path>
+                    <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A6 6 0 1 0 7.5 11.5c.76.76 1.23 1.52 1.41 2.5"></path>
+                </svg>
+            </button>
+            <button id="btn-difficulty" class="side-btn text-btn" title="Độ khó AI">LV 2</button>
+            <button id="btn-undo" class="side-btn" title="Thao tác lại">
+                <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 7v6h6"></path>
+                    <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+                </svg>
+            </button>
+        </div>
+        <div class="right-controls">
+            <button id="btn-mode" class="side-btn" title="Chế độ chơi (Đang: Người vs Người)">
+                <!-- PvP -->
+                <svg id="icon-pvp" viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <!-- PvE (Human First) -->
+                <svg id="icon-pve-human" viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                <!-- PvE (Machine First) -->
+                <svg id="icon-pve-machine" viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                    <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+                    <rect x="9" y="9" width="6" height="6"></rect>
+                    <line x1="9" y1="1" x2="9" y2="4"></line>
+                    <line x1="15" y1="1" x2="15" y2="4"></line>
+                    <line x1="9" y1="20" x2="9" y2="23"></line>
+                    <line x1="15" y1="20" x2="15" y2="23"></line>
+                    <line x1="20" y1="9" x2="23" y2="9"></line>
+                    <line x1="20" y1="14" x2="23" y2="14"></line>
+                    <line x1="1" y1="9" x2="4" y2="9"></line>
+                    <line x1="1" y1="14" x2="4" y2="14"></line>
+                </svg>
+            </button>
+            <button id="btn-size" class="side-btn text-btn" title="Đổi kích thước">25x25</button>
+            <button id="btn-restart" class="side-btn" title="Chơi Lại">
+                <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M23 4v6h-6"></path>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+            </button>
+        </div>
+        
+        <main class="game-area">
+            <div class="board-wrapper">
+                <div id="board" class="board"></div>
+            </div>
+        </main>
+
+        <div id="winner-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2 id="winner-message"></h2>
+                <button id="btn-modal-restart">Chơi ván mới</button>
+            </div>
+        </div>
+    </div>
+    <script src="script.js?v=17"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('Service Worker registered', reg))
+                .catch(err => console.error('Service Worker registration failed', err));
+        }
+    </script>
+</body>
+</html>
