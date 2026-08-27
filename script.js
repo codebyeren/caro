@@ -1,7 +1,3 @@
-// ================================================================
-//  CARO AI ENGINE v5 — Professional Grade (Web Worker Edition)
-// ================================================================
-
 class GomokuAI {
     constructor(size) {
         this.size = size;
@@ -379,18 +375,15 @@ self.onerror = function(msg, url, line, col, error) {
     return true;
 };
 
-
-
-
 let SIZE = 25;
-const WIN_CONDITION = 5; // 5 in a row to win
+const WIN_CONDITION = 5;
 
 let boardState = [];
 let currentPlayer = 'X';
 let gameActive = true;
 let moveHistory = [];
-let gameMode = 'PvP'; // 'PvP', 'PvE_Human', 'PvE_Machine'
-let aiPlayer = null;  // 'O' when PvE_Human, 'X' when PvE_Machine
+let gameMode = 'PvP';
+let aiPlayer = null;
 
 const boardElement = document.getElementById('board');
 const winnerModal = document.getElementById('winner-modal');
@@ -407,27 +400,216 @@ const iconPvP = document.getElementById('icon-pvp');
 const iconPvEHuman = document.getElementById('icon-pve-human');
 const iconPvEMachine = document.getElementById('icon-pve-machine');
 
-let aiLevel = 2; // 1: Dễ, 2: Vừa, 3: Khó
-
-let aiEngine = null;
+let aiLevel = 2; 
 let isAIThinking = false;
+let aiEngine = null;
 
+function initGame() {
+    boardState = Array(SIZE).fill(null).map(() => Array(SIZE).fill(''));
+    currentPlayer = 'X';
+    gameActive = true;
+    moveHistory = [];
+    isAIThinking = false;
+    document.body.style.cursor = 'default';
+    btnDifficulty.classList.remove('thinking-pulse');
 
-const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
-const workerUrl = URL.createObjectURL(workerBlob);
+    boardElement.style.gridTemplateColumns = `repeat(${SIZE}, 30px)`;
+    boardElement.style.gridTemplateRows = `repeat(${SIZE}, 30px)`;
+    boardElement.innerHTML = '';
 
-let useWorker = true;
-let fallbackAI = null;
+    for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+            const cell = document.createElement('div');
+            cell.classList.add('cell');
+            cell.dataset.row = r;
+            cell.dataset.col = c;
+            cell.addEventListener('click', handleCellClick);
+            boardElement.appendChild(cell);
+        }
+    }
 
-function initFallbackAI() {
-    if (typeof GomokuAI !== 'undefined') return;
-    const safeCode = workerCode.split('self.onmessage')[0];
-    const script = document.createElement('script');
-    script.textContent = safeCode;
-    document.head.appendChild(script);
+    winnerModal.style.display = 'none';
+    btnUndo.style.opacity = '0.5';
+    btnUndo.style.pointerEvents = 'none';
+    btnHint.style.opacity = '1';
+    btnHint.style.pointerEvents = 'auto';
+
+    if (gameMode === 'PvP') {
+        aiPlayer = null;
+    } else if (gameMode === 'PvE_Human') {
+        aiPlayer = 'O';
+    } else if (gameMode === 'PvE_Machine') {
+        aiPlayer = 'X';
+        playAITurn();
+    }
 }
 
-function setupWorker() { aiEngine = new GomokuAI(SIZE); }
+function handleCellClick(e) {
+    if (!gameActive || isAIThinking) return;
+    if (aiPlayer && currentPlayer === aiPlayer) return;
+
+    const row = parseInt(e.target.dataset.row);
+    const col = parseInt(e.target.dataset.col);
+
+    if (boardState[row][col] !== '') return;
+
+    makeMoveOnBoard(row, col, currentPlayer, e.target);
+
+    if (gameActive && aiPlayer && currentPlayer === aiPlayer) {
+        playAITurn();
+    }
+}
+
+function makeMoveOnBoard(row, col, player, cellElement) {
+    boardState[row][col] = player;
+    cellElement.textContent = player;
+    cellElement.classList.add(player);
+    cellElement.classList.add('pop');
+
+    if (moveHistory.length > 0) {
+        const lastMove = moveHistory[moveHistory.length - 1];
+        const lastCellIndex = lastMove.r * SIZE + lastMove.c;
+        const lastCell = boardElement.children[lastCellIndex];
+        if (lastCell) lastCell.classList.remove('last-move');
+    }
+
+    cellElement.classList.add('last-move');
+    moveHistory.push({ r: row, c: col, player: player });
+
+    btnUndo.style.opacity = '1';
+    btnUndo.style.pointerEvents = 'auto';
+    btnHint.style.opacity = '1';
+    btnHint.style.pointerEvents = 'auto';
+
+    if (checkWin(row, col, player)) {
+        gameActive = false;
+        showWinner(player);
+        return;
+    }
+
+    currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+}
+
+function checkWin(row, col, player) {
+    return checkDirection(row, col, player, 1, 0) || 
+           checkDirection(row, col, player, 0, 1) || 
+           checkDirection(row, col, player, 1, 1) || 
+           checkDirection(row, col, player, 1, -1);
+}
+
+function checkDirection(row, col, player, rowDir, colDir) {
+    let count = 1;
+    let winningCells = [{ r: row, c: col }];
+
+    for (let i = 1; i < WIN_CONDITION; i++) {
+        let r = row + i * rowDir;
+        let c = col + i * colDir;
+        if (r < 0 || r >= SIZE || c < 0 || c >= SIZE || boardState[r][c] !== player) break;
+        count++;
+        winningCells.push({ r, c });
+    }
+
+    for (let i = 1; i < WIN_CONDITION; i++) {
+        let r = row - i * rowDir;
+        let c = col - i * colDir;
+        if (r < 0 || r >= SIZE || c < 0 || c >= SIZE || boardState[r][c] !== player) break;
+        count++;
+        winningCells.push({ r, c });
+    }
+
+    if (count >= WIN_CONDITION) {
+        highlightWinningCells(winningCells);
+        return true;
+    }
+    return false;
+}
+
+function highlightWinningCells(cells) {
+    cells.forEach(cell => {
+        const index = cell.r * SIZE + cell.c;
+        boardElement.children[index].classList.add('winning-cell');
+    });
+}
+
+function showWinner(player) {
+    let message = `Người chơi ${player} chiến thắng!`;
+    if (aiPlayer) {
+        if (player === aiPlayer) {
+            message = "Máy tính chiến thắng!";
+        } else {
+            message = "Bạn đã chiến thắng xuất sắc!";
+        }
+    }
+    winnerMessage.textContent = message;
+    winnerModal.style.display = 'flex';
+}
+
+function playAITurn() {
+    if (!gameActive || isAIThinking) return;
+    
+    isAIThinking = true;
+    document.body.style.cursor = 'wait';
+    btnDifficulty.classList.add('thinking-pulse');
+
+    const player = aiPlayer;
+    let timeLimit = 1500;
+    let maxDepth = 20;
+
+    if (aiLevel === 1) { timeLimit = 500; maxDepth = 3; }
+    else if (aiLevel === 2) { timeLimit = 1500; maxDepth = 4; }
+    else if (aiLevel === 3) { timeLimit = 3000; maxDepth = 6; }
+    else if (aiLevel === 4) { timeLimit = 5000; maxDepth = 30; }
+
+    setTimeout(() => {
+        try {
+            if (!aiEngine || aiEngine.size !== SIZE) aiEngine = new GomokuAI(SIZE);
+            aiEngine.syncFromState(boardState);
+            const move = aiEngine.getBestMove(player, timeLimit, maxDepth);
+            handleAIResult(move, 'PLAY');
+        } catch(e) {
+            alert('Lỗi AI: ' + e.message);
+            isAIThinking = false;
+            document.body.style.cursor = 'default';
+            btnDifficulty.classList.remove('thinking-pulse');
+        }
+    }, 100);
+}
+
+function showHint() {
+    if (!gameActive || isAIThinking) return;
+    if (moveHistory.length === 0 && gameMode !== 'PvE_Machine') {
+        const center = Math.floor(SIZE / 2);
+        highlightHint(center, center);
+        return;
+    }
+
+    isAIThinking = true;
+    btnDifficulty.classList.add('thinking-pulse');
+    document.body.style.cursor = 'wait';
+
+    const player = currentPlayer;
+    let timeLimit = 1500;
+    let maxDepth = 20;
+
+    if (aiLevel === 1) { timeLimit = 500; maxDepth = 3; }
+    else if (aiLevel === 2) { timeLimit = 1500; maxDepth = 4; }
+    else if (aiLevel === 3) { timeLimit = 3000; maxDepth = 6; }
+    else if (aiLevel === 4) { timeLimit = 5000; maxDepth = 30; }
+
+    setTimeout(() => {
+        try {
+            if (!aiEngine || aiEngine.size !== SIZE) aiEngine = new GomokuAI(SIZE);
+            aiEngine.syncFromState(boardState);
+            const move = aiEngine.getBestMove(player, timeLimit, maxDepth);
+            handleAIResult(move, 'HINT');
+        } catch(e) {
+            alert('Lỗi AI: ' + e.message);
+            isAIThinking = false;
+            document.body.style.cursor = 'default';
+            btnDifficulty.classList.remove('thinking-pulse');
+        }
+    }, 100);
+}
 
 function handleAIResult(hint, action) {
     isAIThinking = false;
@@ -439,264 +621,117 @@ function handleAIResult(hint, action) {
             const index = hint.r * SIZE + hint.c;
             const cell = boardElement.children[index];
             makeMoveOnBoard(hint.r, hint.c, aiPlayer, cell);
-            // scroll removed
         }
     } else if (action === 'HINT' && gameActive) {
         btnHint.style.opacity = '1';
         btnHint.style.pointerEvents = 'auto';
         if (hint) {
-            const index = hint.r * SIZE + hint.c;
-            const cell = boardElement.children[index];
-            cell.classList.add('hint-cell');
-            cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-            setTimeout(() => cell.classList.remove('hint-cell'), 2500);
+            highlightHint(hint.r, hint.c);
         }
     }
 }
 
-setupWorker();
-setTimeout(() => alert("Đã cập nhật v17! Web Worker: " + useWorker), 500);
-
-function initGame() {
-    if (isAIThinking) {
-        setupWorker();
-        isAIThinking = false;
-        document.body.style.cursor = 'default';
-        btnDifficulty.classList.remove('thinking-pulse');
-        btnHint.style.opacity = '1';
-        btnHint.style.pointerEvents = 'auto';
-    }
-
-    boardState = Array(SIZE).fill(null).map(() => Array(SIZE).fill(null));
-    currentPlayer = 'X';
-    gameActive = true;
-    moveHistory = [];
-    winnerModal.classList.add('hidden');
-    renderBoard();
-    
-    if (useWorker && aiWorker) aiWorker.postMessage({ type: 'INIT', size: SIZE });
-    
-    if (gameMode === 'PvE_Machine' && aiPlayer === 'X') {
-        setTimeout(playAITurn, 100);
-    }
-}
-
-function renderBoard() {
-    boardElement.innerHTML = '';
-    boardElement.style.gridTemplateColumns = `repeat(${SIZE}, 40px)`;
-    boardElement.style.gridTemplateRows = `repeat(${SIZE}, 40px)`;
-    for (let r = 0; r < SIZE; r++) {
-        for (let c = 0; c < SIZE; c++) {
-            const cell = document.createElement('div');
-            cell.classList.add('cell');
-            cell.dataset.row = r;
-            cell.dataset.col = c;
-            cell.addEventListener('click', handleCellClick);
-            boardElement.appendChild(cell);
-        }
-    }
-}
-
-function handleCellClick(e) {
-    if (!gameActive || isAIThinking) return;
-    
-    if (aiPlayer !== null && currentPlayer === aiPlayer) return;
-
-    const row = parseInt(e.target.dataset.row);
-    const col = parseInt(e.target.dataset.col);
-
-    if (boardState[row][col] !== null) return;
-
-    makeMoveOnBoard(row, col, currentPlayer, e.target);
-}
-
-function makeMoveOnBoard(row, col, player, cellElement) {
-    boardState[row][col] = player;
-    cellElement.textContent = player;
-    cellElement.classList.add(player.toLowerCase());
-    
-    moveHistory.push({row, col, player});
-
-    const winningCells = checkWin(row, col, player);
-    
-    if (winningCells) {
-        highlightWinningCells(winningCells);
-        endGame(`Người chơi ${player} chiến thắng!`);
-    } else {
-        currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
-        
-        if (gameActive && aiPlayer !== null && currentPlayer === aiPlayer) {
-            setTimeout(playAITurn, 10);
-        }
-    }
-}
-
-function playAITurn() {
-    if (!gameActive || aiPlayer === null || currentPlayer !== aiPlayer || isAIThinking) return;
-    
-    isAIThinking = true;
-    document.body.style.cursor = 'wait';
-    btnDifficulty.classList.add('thinking-pulse');
-    
-    let timeLimit = 1500;
-    let maxDepth = 12;
-    if (aiLevel === 1) { timeLimit = 500; maxDepth = 6; }
-    else if (aiLevel === 3) { timeLimit = 5000; maxDepth = 20; }
-    else if (aiLevel === 4) { timeLimit = 300000; maxDepth = 30; } // Unlimited: 5 mins, depth 30
-    
-    const action = 'PLAY';
-    const player = aiPlayer;
-    
-    if (!useWorker) {
-        setTimeout(() => {
-            try {
-                if (!fallbackAI) fallbackAI = new GomokuAI(SIZE);
-                fallbackAI.syncFromState(boardState);
-                const move = fallbackAI.getBestMove(player, timeLimit, maxDepth);
-                handleAIResult(move, action);
-            } catch (e) {
-                alert("Lỗi AI trên máy của bạn: " + e.message);
-                isAIThinking = false;
-                document.body.style.cursor = 'default';
-                btnDifficulty.classList.remove('thinking-pulse');
-            }
-        }, 100);
-        return;
-    }
-    
-    aiWorker.postMessage({
-        type: 'GET_MOVE',
-        boardState: boardState,
-        size: SIZE,
-        player: player,
-        timeLimit: timeLimit,
-        maxDepth: maxDepth,
-        action: action
-    });
-}
-
-function showHint() {
-    if (!gameActive || isAIThinking) return;
-    
-    isAIThinking = true;
-    btnHint.style.opacity = '0.5';
-    btnHint.style.pointerEvents = 'none';
-    
-    let timeLimit = 1500;
-    let maxDepth = 12;
-    if (aiLevel === 1) { timeLimit = 500; maxDepth = 6; }
-    else if (aiLevel === 3) { timeLimit = 5000; maxDepth = 20; }
-    else if (aiLevel === 4) { timeLimit = 300000; maxDepth = 30; }
-    
-    const action = 'HINT';
-    const player = currentPlayer;
-    
-    if (!useWorker) {
-        setTimeout(() => {
-            try {
-                if (!fallbackAI) fallbackAI = new GomokuAI(SIZE);
-                fallbackAI.syncFromState(boardState);
-                const move = fallbackAI.getBestMove(player, timeLimit, maxDepth);
-                handleAIResult(move, action);
-            } catch (e) {
-                alert("Lỗi AI trên máy của bạn: " + e.message);
-                isAIThinking = false;
-                document.body.style.cursor = 'default';
-                btnDifficulty.classList.remove('thinking-pulse');
-            }
-        }, 100);
-        return;
-    }
-    
-    aiWorker.postMessage({
-        type: 'GET_MOVE',
-        boardState: boardState,
-        size: SIZE,
-        player: player,
-        timeLimit: timeLimit,
-        maxDepth: maxDepth,
-        action: action
-    });
+function highlightHint(r, c) {
+    const index = r * SIZE + c;
+    const cell = boardElement.children[index];
+    cell.classList.add('hint-cell');
+    setTimeout(() => cell.classList.remove('hint-cell'), 2500);
 }
 
 function undoMove() {
-    if (moveHistory.length === 0) return;
-    
-    if (isAIThinking) {
-        setupWorker(); // kill current worker and restart
-        isAIThinking = false;
-        document.body.style.cursor = 'default';
-        btnDifficulty.classList.remove('thinking-pulse');
-        btnHint.style.opacity = '1';
-        btnHint.style.pointerEvents = 'auto';
-        if (useWorker && aiWorker) aiWorker.postMessage({ type: 'INIT', size: SIZE }); // Make sure new worker has size
-    }
-    
-    let movesToUndo = 1;
-    if (aiPlayer !== null && currentPlayer !== aiPlayer && moveHistory.length >= 2) {
-        movesToUndo = 2;
-    }
-    
-    for (let i = 0; i < movesToUndo; i++) {
-        if (moveHistory.length === 0) break;
-        const lastMove = moveHistory.pop();
-        boardState[lastMove.row][lastMove.col] = null;
+    if (moveHistory.length === 0 || isAIThinking) return;
+
+    if (gameMode.startsWith('PvE')) {
+        if (moveHistory.length < 2 && gameMode === 'PvE_Machine') return;
         
-        const index = lastMove.row * SIZE + lastMove.col;
+        let movesToUndo = 1;
+        if (currentPlayer !== aiPlayer) {
+            movesToUndo = 2; 
+        } else {
+            movesToUndo = 1; 
+        }
+
+        if (moveHistory.length < movesToUndo) return;
+
+        for (let i = 0; i < movesToUndo; i++) {
+            const lastMove = moveHistory.pop();
+            boardState[lastMove.r][lastMove.c] = '';
+            const index = lastMove.r * SIZE + lastMove.c;
+            const cell = boardElement.children[index];
+            cell.textContent = '';
+            cell.classList.remove('X', 'O', 'pop', 'last-move');
+            currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+        }
+    } else {
+        const lastMove = moveHistory.pop();
+        boardState[lastMove.r][lastMove.c] = '';
+        const index = lastMove.r * SIZE + lastMove.c;
         const cell = boardElement.children[index];
         cell.textContent = '';
-        cell.classList.remove('x', 'o', 'winning-cell');
-        currentPlayer = lastMove.player;
+        cell.classList.remove('X', 'O', 'pop', 'last-move');
+        currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+    }
+
+    if (moveHistory.length > 0) {
+        const previousMove = moveHistory[moveHistory.length - 1];
+        const prevIndex = previousMove.r * SIZE + previousMove.c;
+        boardElement.children[prevIndex].classList.add('last-move');
+    }
+
+    gameActive = true;
+    winnerModal.style.display = 'none';
+
+    if (moveHistory.length === 0) {
+        btnUndo.style.opacity = '0.5';
+        btnUndo.style.pointerEvents = 'none';
     }
     
-    if (!gameActive) {
-        gameActive = true;
-        winnerModal.classList.add('hidden');
-        Array.from(boardElement.children).forEach(c => c.classList.remove('winning-cell'));
-    }
-    
-    if (gameMode === 'PvE_Machine' && currentPlayer === 'X' && moveHistory.length === 0) {
-        setTimeout(playAITurn, 100);
-    }
+    document.querySelectorAll('.winning-cell').forEach(c => c.classList.remove('winning-cell'));
 }
 
 btnRestart.addEventListener('click', initGame);
-btnUndo.addEventListener('click', undoMove);
-btnHint.addEventListener('click', showHint);
 btnModalRestart.addEventListener('click', initGame);
-
-btnDifficulty.addEventListener('click', () => {
-    aiLevel = aiLevel === 1 ? 2 : (aiLevel === 2 ? 3 : (aiLevel === 3 ? 4 : 1));
-    btnDifficulty.textContent = `LV ${aiLevel}`;
-    if (aiLevel === 1) btnDifficulty.title = "Độ khó AI: Dễ (Suy nghĩ nhanh)";
-    if (aiLevel === 2) btnDifficulty.title = "Độ khó AI: Vừa (Suy nghĩ tiêu chuẩn)";
-    if (aiLevel === 3) btnDifficulty.title = "Độ khó AI: Siêu Khó (Suy nghĩ rất lâu)";
-    if (aiLevel === 4) btnDifficulty.title = "Độ khó AI: Vô Hạn (Nghĩ không giới hạn - Có thể dừng bằng nút Undo)";
+btnUndo.addEventListener('click', undoMove);
+btnHint.addEventListener('click', () => {
+    btnHint.style.opacity = '0.5';
+    btnHint.style.pointerEvents = 'none';
+    showHint();
 });
 
 btnMode.addEventListener('click', () => {
-    iconPvP.style.display = 'none';
-    iconPvEHuman.style.display = 'none';
-    iconPvEMachine.style.display = 'none';
-
     if (gameMode === 'PvP') {
         gameMode = 'PvE_Human';
-        aiPlayer = 'O';
-        iconPvEHuman.style.display = 'block';
-        btnMode.title = 'Chế độ chơi (Đang: Máy vs Người - Bạn đánh trước)';
+        iconPvP.style.display = 'none';
+        iconPvEHuman.style.display = 'inline';
+        iconPvEMachine.style.display = 'none';
+        btnMode.innerHTML = iconPvEHuman.outerHTML + ' Người Đánh Trước';
     } else if (gameMode === 'PvE_Human') {
         gameMode = 'PvE_Machine';
-        aiPlayer = 'X';
-        iconPvEMachine.style.display = 'block';
-        btnMode.title = 'Chế độ chơi (Đang: Máy vs Người - Máy đánh trước)';
+        iconPvP.style.display = 'none';
+        iconPvEHuman.style.display = 'none';
+        iconPvEMachine.style.display = 'inline';
+        btnMode.innerHTML = iconPvEMachine.outerHTML + ' Máy Đánh Trước';
     } else {
         gameMode = 'PvP';
-        aiPlayer = null;
-        iconPvP.style.display = 'block';
-        btnMode.title = 'Chế độ chơi (Đang: Người vs Người)';
+        iconPvP.style.display = 'inline';
+        iconPvEHuman.style.display = 'none';
+        iconPvEMachine.style.display = 'none';
+        btnMode.innerHTML = iconPvP.outerHTML + ' Chơi 2 Người';
     }
-    // Restart game when switching modes
     initGame();
+});
+
+btnDifficulty.addEventListener('click', () => {
+    aiLevel++;
+    if (aiLevel > 4) aiLevel = 1;
+    
+    let text = 'Dễ';
+    let icon = 'fa-baby';
+    if (aiLevel === 2) { text = 'Vừa'; icon = 'fa-child'; }
+    else if (aiLevel === 3) { text = 'Khó'; icon = 'fa-robot'; }
+    else if (aiLevel === 4) { text = 'Vô cực'; icon = 'fa-brain'; }
+    
+    btnDifficulty.innerHTML = `<i class="fas ${icon}"></i> Máy: ${text}`;
 });
 
 btnSize.addEventListener('click', () => {
@@ -704,25 +739,22 @@ btnSize.addEventListener('click', () => {
     else if (SIZE === 20) SIZE = 25;
     else SIZE = 15;
     
-    btnSize.textContent = `${SIZE}x${SIZE}`;
-    aiEngine = new GomokuAI(SIZE); // Reset AI for new size
-    initGame();
-    
-    // Recenter board
-    const gameArea = document.querySelector('.game-area');
-    const wrapper = document.querySelector('.board-wrapper');
-    gameArea.scrollTop = (wrapper.scrollHeight - gameArea.clientHeight) / 2;
-    gameArea.scrollLeft = (wrapper.scrollWidth - gameArea.clientWidth) / 2;
-});
-
-// Center board on start for big screens
-window.addEventListener('load', () => {
+    btnSize.innerHTML = `<i class="fas fa-expand"></i> ${SIZE}x${SIZE}`;
     aiEngine = new GomokuAI(SIZE);
     initGame();
-    // Scroll to center of the board
+    
     const gameArea = document.querySelector('.game-area');
     const wrapper = document.querySelector('.board-wrapper');
     gameArea.scrollTop = (wrapper.scrollHeight - gameArea.clientHeight) / 2;
     gameArea.scrollLeft = (wrapper.scrollWidth - gameArea.clientWidth) / 2;
 });
 
+window.addEventListener('load', () => {
+    setTimeout(() => alert("Đã cập nhật bản CHẠY ĐƠN LUỒNG siêu mượt!"), 500);
+    aiEngine = new GomokuAI(SIZE);
+    initGame();
+    const gameArea = document.querySelector('.game-area');
+    const wrapper = document.querySelector('.board-wrapper');
+    gameArea.scrollTop = (wrapper.scrollHeight - gameArea.clientHeight) / 2;
+    gameArea.scrollLeft = (wrapper.scrollWidth - gameArea.clientWidth) / 2;
+});
