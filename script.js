@@ -404,7 +404,11 @@ class GomokuAI {
     }
 }
 
-let aiEngine = null;
+self.onerror = function(msg, url, line, col, error) {
+    self.postMessage({ type: 'WORKER_ERROR', error: msg + ' ' + (error ? error.stack : '') });
+    return true;
+};
+\nlet aiEngine = null;
 
 self.onmessage = function(e) {
     const data = e.data;
@@ -486,7 +490,7 @@ function handleAIResult(hint, action) {
             const index = hint.r * SIZE + hint.c;
             const cell = boardElement.children[index];
             makeMoveOnBoard(hint.r, hint.c, aiPlayer, cell);
-            cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+            // scroll removed
         }
     } else if (action === 'HINT' && gameActive) {
         btnHint.style.opacity = '1';
