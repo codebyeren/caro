@@ -1,34 +1,4 @@
-let SIZE = 25;
-const WIN_CONDITION = 5; // 5 in a row to win
-
-let boardState = [];
-let currentPlayer = 'X';
-let gameActive = true;
-let moveHistory = [];
-let gameMode = 'PvP'; // 'PvP', 'PvE_Human', 'PvE_Machine'
-let aiPlayer = null;  // 'O' when PvE_Human, 'X' when PvE_Machine
-
-const boardElement = document.getElementById('board');
-const winnerModal = document.getElementById('winner-modal');
-const winnerMessage = document.getElementById('winner-message');
-const btnRestart = document.getElementById('btn-restart');
-const btnUndo = document.getElementById('btn-undo');
-const btnSize = document.getElementById('btn-size');
-const btnHint = document.getElementById('btn-hint');
-const btnDifficulty = document.getElementById('btn-difficulty');
-const btnMode = document.getElementById('btn-mode');
-const btnModalRestart = document.getElementById('btn-modal-restart');
-
-const iconPvP = document.getElementById('icon-pvp');
-const iconPvEHuman = document.getElementById('icon-pve-human');
-const iconPvEMachine = document.getElementById('icon-pve-machine');
-
-let aiLevel = 2; // 1: Dễ, 2: Vừa, 3: Khó
-
-let aiWorker = null;
-let isAIThinking = false;
-
-const workerCode = `// ================================================================
+// ================================================================
 //  CARO AI ENGINE v5 — Professional Grade (Web Worker Edition)
 // ================================================================
 
@@ -408,23 +378,41 @@ self.onerror = function(msg, url, line, col, error) {
     self.postMessage({ type: 'WORKER_ERROR', error: msg + ' ' + (error ? error.stack : '') });
     return true;
 };
-\nlet aiEngine = null;
 
-self.onmessage = function(e) {
-    const data = e.data;
-    
-    if (data.type === 'INIT') {
-        aiEngine = new GomokuAI(data.size);
-    } else if (data.type === 'GET_MOVE') {
-        if (!aiEngine || aiEngine.size !== data.size) {
-            aiEngine = new GomokuAI(data.size);
-        }
-        aiEngine.syncFromState(data.boardState);
-        const move = aiEngine.getBestMove(data.player, data.timeLimit, data.maxDepth);
-        self.postMessage({ type: 'MOVE_RESULT', move, action: data.action });
-    }
-};
-`;
+
+
+
+let SIZE = 25;
+const WIN_CONDITION = 5; // 5 in a row to win
+
+let boardState = [];
+let currentPlayer = 'X';
+let gameActive = true;
+let moveHistory = [];
+let gameMode = 'PvP'; // 'PvP', 'PvE_Human', 'PvE_Machine'
+let aiPlayer = null;  // 'O' when PvE_Human, 'X' when PvE_Machine
+
+const boardElement = document.getElementById('board');
+const winnerModal = document.getElementById('winner-modal');
+const winnerMessage = document.getElementById('winner-message');
+const btnRestart = document.getElementById('btn-restart');
+const btnUndo = document.getElementById('btn-undo');
+const btnSize = document.getElementById('btn-size');
+const btnHint = document.getElementById('btn-hint');
+const btnDifficulty = document.getElementById('btn-difficulty');
+const btnMode = document.getElementById('btn-mode');
+const btnModalRestart = document.getElementById('btn-modal-restart');
+
+const iconPvP = document.getElementById('icon-pvp');
+const iconPvEHuman = document.getElementById('icon-pve-human');
+const iconPvEMachine = document.getElementById('icon-pve-machine');
+
+let aiLevel = 2; // 1: Dễ, 2: Vừa, 3: Khó
+
+let aiEngine = null;
+let isAIThinking = false;
+
+
 const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
 const workerUrl = URL.createObjectURL(workerBlob);
 
@@ -439,46 +427,7 @@ function initFallbackAI() {
     document.head.appendChild(script);
 }
 
-function setupWorker() {
-    const isLocal = window.location.protocol === 'file:' || window.location.protocol === 'content:';
-    if (isLocal) {
-        useWorker = false;
-        initFallbackAI();
-        return;
-    }
-
-    try {
-        if (aiWorker) aiWorker.terminate();
-        const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
-        const workerUrl = URL.createObjectURL(workerBlob);
-        aiWorker = new Worker(workerUrl);
-        
-        aiWorker.onmessage = function(e) {
-            if (e.data.type === 'MOVE_RESULT') {
-                handleAIResult(e.data.move, e.data.action);
-            }
-        };
-        
-        aiWorker.onerror = function(e) {
-            console.warn('Worker error (CORS/Blob blocked). Falling back to main thread.');
-            useWorker = false;
-            initFallbackAI();
-            if (isAIThinking) {
-                isAIThinking = false;
-                if (gameActive) {
-                    setTimeout(() => {
-                        const evt = new CustomEvent('forceAI');
-                        window.dispatchEvent(evt);
-                    }, 500);
-                }
-            }
-        };
-    } catch (e) {
-        console.warn('Worker construction failed. Falling back to main thread.');
-        useWorker = false;
-        initFallbackAI();
-    }
-}
+function setupWorker() { aiEngine = new GomokuAI(SIZE); }
 
 function handleAIResult(hint, action) {
     isAIThinking = false;
