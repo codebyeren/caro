@@ -502,6 +502,7 @@ function handleAIResult(hint, action) {
 }
 
 setupWorker();
+setTimeout(() => alert("Đã cập nhật v17! Web Worker: " + useWorker), 500);
 
 function initGame() {
     if (isAIThinking) {
@@ -595,10 +596,17 @@ function playAITurn() {
     
     if (!useWorker) {
         setTimeout(() => {
-            if (!fallbackAI) fallbackAI = new GomokuAI(SIZE);
-            fallbackAI.syncFromState(boardState);
-            const move = fallbackAI.getBestMove(player, timeLimit, maxDepth);
-            handleAIResult(move, action);
+            try {
+                if (!fallbackAI) fallbackAI = new GomokuAI(SIZE);
+                fallbackAI.syncFromState(boardState);
+                const move = fallbackAI.getBestMove(player, timeLimit, maxDepth);
+                handleAIResult(move, action);
+            } catch (e) {
+                alert("Lỗi AI trên máy của bạn: " + e.message);
+                isAIThinking = false;
+                document.body.style.cursor = 'default';
+                btnDifficulty.classList.remove('thinking-pulse');
+            }
         }, 100);
         return;
     }
@@ -632,10 +640,17 @@ function showHint() {
     
     if (!useWorker) {
         setTimeout(() => {
-            if (!fallbackAI) fallbackAI = new GomokuAI(SIZE);
-            fallbackAI.syncFromState(boardState);
-            const move = fallbackAI.getBestMove(player, timeLimit, maxDepth);
-            handleAIResult(move, action);
+            try {
+                if (!fallbackAI) fallbackAI = new GomokuAI(SIZE);
+                fallbackAI.syncFromState(boardState);
+                const move = fallbackAI.getBestMove(player, timeLimit, maxDepth);
+                handleAIResult(move, action);
+            } catch (e) {
+                alert("Lỗi AI trên máy của bạn: " + e.message);
+                isAIThinking = false;
+                document.body.style.cursor = 'default';
+                btnDifficulty.classList.remove('thinking-pulse');
+            }
         }, 100);
         return;
     }
